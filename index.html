@@ -4,13 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script>
-  /* iOS tap fix: Safari does not reliably emit a click from a tap on the
-     non-interactive <div>s this app uses as buttons. Translate a clean tap
-     (no drag, short duration) into a real .click() on the nearest element
-     that carries an onclick handler. Listeners live on `document`, which
-     survives the bundler swapping out <html>. Inert on non-touch devices. */
+  /* iOS tap fix v2. The app's primary interaction is "tap anywhere to walk",
+     but an open chapter card covers most of the phone screen and swallows taps
+     on its body, so after the first advance further taps appeared to do nothing.
+     Strategy: on a clean tap, route a tap on any LARGE area (background or an
+     open card) to the proven keyboard-advance path, and only forward genuinely
+     small controls (sound, restart, back, close, walk-on, links, scene art) to
+     their own click handler. Listeners live on `document`, which survives the
+     bundler swapping out <html>. Inert on non-touch devices. */
   (function () {
     var sx = 0, sy = 0, moved = false, t0 = 0, active = false;
+    function advance() {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true }));
+    }
     document.addEventListener('touchstart', function (e) {
       if (e.touches.length !== 1) { active = false; return; }
       active = true; moved = false; t0 = Date.now();
@@ -18,18 +24,27 @@
     }, { passive: true });
     document.addEventListener('touchmove', function (e) {
       if (!active || !e.touches[0]) return;
-      if (Math.abs(e.touches[0].clientX - sx) > 10 ||
-          Math.abs(e.touches[0].clientY - sy) > 10) moved = true;
+      if (Math.abs(e.touches[0].clientX - sx) > 12 ||
+          Math.abs(e.touches[0].clientY - sy) > 12) moved = true;
     }, { passive: true });
     document.addEventListener('touchend', function (e) {
       if (!active) return; active = false;
       if (moved || Date.now() - t0 > 700) return;
       var t = e.changedTouches && e.changedTouches[0]; if (!t) return;
       var el = document.elementFromPoint(t.clientX, t.clientY);
-      while (el && el !== document.documentElement) {
-        if (typeof el.onclick === 'function') { e.preventDefault(); el.click(); return; }
-        el = el.parentElement;
+      var ctrl = null, n = el;
+      while (n && n !== document.documentElement) {
+        if (typeof n.onclick === 'function') { ctrl = n; break; }
+        n = n.parentElement;
       }
+      e.preventDefault();
+      if (ctrl) {
+        var r = ctrl.getBoundingClientRect();
+        var area = r.width * r.height;
+        var viewport = window.innerWidth * window.innerHeight;
+        if (area > 0 && area < viewport * 0.18) { ctrl.click(); return; }
+      }
+      advance();
     }, { passive: false });
   })();
   </script>
